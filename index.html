@@ -26,7 +26,7 @@
       color: rgba(98,228,130,.9); font-family: 'Orbitron', sans-serif;
       font-size: 11px; font-weight: 700; cursor: pointer; user-select: none;
       -webkit-tap-highlight-color: transparent; display: flex; align-items: center; justify-content: center;
-      transition: background 0.1s, transform 0.08s; box-shadow: 0 0 20px rgba(98,228,130,.12);
+      transition: background 0.1s, transform 0.08s; box-shadow: 0 0 px rgba(98,228,130,.12);
     }
     .btn-jump:active { background: rgba(98,228,130,.32); transform: scale(0.94); }
     @media (pointer: coarse), (max-width: 700px) { .mobile-controls { display: block; } }
@@ -119,7 +119,7 @@
   btnJump.addEventListener("mouseup",   ()=>keys.delete("Space"));
 
   // ── Constants ─────────────────────────────────────────────────────────────
-  const GRAV           = 2400;
+  const GRAV           = 2300;
   const JUMP_VEL       = 820;
   const ARMOR_RATE     = 85;
   const AIR_DAMP       = 0.995;
@@ -135,9 +135,9 @@
   const FATIGUE_MAX         = 100;
   const STUN_DURATION       = 1.0;  // сек стана после перегрева
   const DOUBLE_JUMP_FATIGUE = 35;   // штраф усталости за двойной прыжок
-  const PIGEON_EVERY        = 10;   // каждые N флаеров спавним голубя
-  const WAVE_DURATION       = 20;   // секунд на волну
-  const BOSS_EVERY          = 5;    // каждые N волн — босс
+  const PIGEON_EVERY        = 7;   // каждые N флаеров спавним голубя
+  const WAVE_DURATION       = 14;   // секунд на волну
+  const BOSS_EVERY          = 4;    // каждые N волн — босс
 
   // ── Stars ─────────────────────────────────────────────────────────────────
   const stars = Array.from({length:60}, ()=>({
