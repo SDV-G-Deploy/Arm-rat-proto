@@ -192,6 +192,8 @@
   btnJump.addEventListener("touchend",  e=>{e.preventDefault();keys.delete("Space");},{passive:false});
   btnJump.addEventListener("mousedown", ()=>keys.add("Space"));
   btnJump.addEventListener("mouseup",   ()=>keys.delete("Space"));
+  btnJump.addEventListener("mouseleave",()=>keys.delete("Space"));
+  btnJump.addEventListener("touchcancel",()=>keys.delete("Space"),{passive:true});
 
   // в”Ђв”Ђ Constants в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const GRAV           = 2400;
@@ -212,6 +214,8 @@
   const PIGEON_EVERY        = 10;   // РєР°Р¶РґС‹Рµ N С„Р»Р°РµСЂРѕРІ СЃРїР°РІРЅРёРј РіРѕР»СѓР±СЏ
   const WAVE_DURATION       = 20;   // СЃРµРєСѓРЅРґ РЅР° РІРѕР»РЅСѓ
   const BOSS_EVERY          = 5;    // РєР°Р¶РґС‹Рµ N РІРѕР»РЅ вЂ” Р±РѕСЃСЃ
+  const JUMP_BUFFER_T       = 0.12; // буфер нажатия прыжка перед приземлением
+  const ASSIST_WINDOW_T     = 8.0;  // время адаптивной помощи после получения урона
 
   // в”Ђв”Ђ Stars в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const stars = Array.from({length:60}, ()=>({
@@ -222,7 +226,7 @@
   let paused=false, started=false, gameOver=false, lastArmorStage=0;
   let debugEnabled=false;
 
-  const world = { time:0, camShake:0, camOffX:0, camOffY:0, score:0, wave:1, waveTimer:0, waveCountdown:WAVE_DURATION, boss:null };
+  const world = { time:0, camShake:0, camOffX:0, camOffY:0, score:0, wave:1, waveTimer:0, waveCountdown:WAVE_DURATION, boss:null, assistTimer:0 };
 
   const p = {
     x:160, y:groundY, vx:150, vy:0,
@@ -231,6 +235,7 @@
     fatigue:0, stunTimer:0, overheated:false,
     hasDoubleJump:false,   // СЃР±СЂР°СЃС‹РІР°РµС‚СЃСЏ РїСЂРё РїСЂРёР|РµРјР»РµРЅРёРё
     prevSpaceDown:false,   // РґР»СЏ edge detection (РЅРµ hold)
+    jumpBufferTimer:0,
   };
 
   const impact    = { active:false, t:0, x:0, y:0, id:0, bossHit:false };
@@ -257,15 +262,20 @@
   // в”Ђв”Ђ Enemy spawn в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   let flyerSpawnCount = 0;  // СЃС‡РёС‚Р°РµРј С„Р»Р°РµСЂРѕРІ РґР»СЏ СЃРїР°РІРЅР° РіРѕР»СѓР±СЏ
 
+  const getAssistFactor = () => clamp(world.assistTimer / ASSIST_WINDOW_T, 0, 1);
+  const getEnemySpeedScale = () => 1 - getAssistFactor() * 0.28; // до -28% скорости на пике помощи
+
   function spawnEnemy(type) {
     const fromRight = Math.random() > 0.5;
     const x = fromRight ? W+40 : -40;
     const dir = fromRight ? -1 : 1;
 
+    const speedScale = getEnemySpeedScale();
+
     if (type === "walker") {
       enemies.push({
         type:"walker", x, y:groundY,
-        vx:dir*rand(80,140+world.wave*8), vy:0,
+        vx:dir*rand(80,140+world.wave*8)*speedScale, vy:0,
         r:18, dead:false, deathT:0,
       });
     } else if (type === "pigeon") {
@@ -273,7 +283,7 @@
       const baseY = rand(groundY*0.38, groundY*0.55);
       enemies.push({
         type:"pigeon", x, y:baseY, baseY,
-        vx:dir*rand(70,110),
+        vx:dir*rand(70,110)*speedScale,
         amplitude:rand(15,35), freq:rand(0.8,1.6), phase:rand(0,Math.PI*2),
         r:18, dead:false, deathT:0,
         wingPhase:0,
@@ -284,23 +294,28 @@
       const baseY = rand(groundY*0.2, groundY*0.55);
       enemies.push({
         type:"flyer", x, y:baseY, baseY,
-        vx:dir*rand(100,160+world.wave*10),
+        vx:dir*rand(100,160+world.wave*10)*speedScale,
         amplitude:rand(28,70), freq:rand(1.5,3.2), phase:rand(0,Math.PI*2),
         r:16, dead:false, deathT:0,
       });
-      // РљР°Р¶РґС‹Рµ PIGEON_EVERY С„Р»Р°РµСЂРѕРІ вЂ” СЃРїР°РІРЅРёРј РіРѕР»СѓР±СЏ СЃ Р|Р°РґРµСЂР¶РєРѕР№
-      if (flyerSpawnCount % PIGEON_EVERY === 0) {
-        schedule(()=>{ if(!gameOver) spawnEnemy("pigeon"); }, rand(800,2000));
+      // При просадке по HP чаще даём окно на отхил (мобильный anti-spiral)
+      const hpPressure = p.hp <= 1 ? 3 : (p.hp === 2 ? 2 : 0);
+      const adaptivePigeonEvery = Math.max(4, PIGEON_EVERY - hpPressure);
+      if (flyerSpawnCount % adaptivePigeonEvery === 0) {
+        schedule(()=>{ if(!gameOver) spawnEnemy("pigeon"); }, rand(700,1700));
       }
     }
   }
 
   function spawnWave() {
-    const count = 2 + Math.floor(world.wave * 1.3);
+    const assist = getAssistFactor();
+    const countBase = 2 + Math.floor(world.wave * 1.3);
+    const count = Math.max(2, countBase - Math.round(assist * 2));
+    const flyerChance = 0.45 + assist * 0.2;
     for (let i=0;i<count;i++) {
       schedule(()=>{
-        if (!gameOver) spawnEnemy(Math.random()<0.45?"flyer":"walker");
-      }, i * rand(350,850));
+        if (!gameOver) spawnEnemy(Math.random()<flyerChance?"flyer":"walker");
+      }, i * rand(320, assist > 0 ? 980 : 850));
     }
   }
 
@@ -327,9 +342,9 @@
     p.onGround=true; p.armor=0; p.hp=MAX_HP;
     p.hurtTimer=0; p.coyoteTimer=0; p.armorTickTimer=0;
     p.fatigue=0; p.stunTimer=0; p.overheated=false;
-    p.hasDoubleJump=false; p.prevSpaceDown=false;
+    p.hasDoubleJump=false; p.prevSpaceDown=false; p.jumpBufferTimer=0;
     impact.active=false; impact.t=0;
-    world.time=0; world.camShake=0; world.score=0; world.wave=1; world.waveTimer=0; world.waveCountdown=WAVE_DURATION; world.boss=null;
+    world.time=0; world.camShake=0; world.score=0; world.wave=1; world.waveTimer=0; world.waveCountdown=WAVE_DURATION; world.boss=null; world.assistTimer=0;
     particles.length=0; enemies.length=0; floaters.length=0;
     lastArmorStage=0; gameOver=false; paused=false;
     flyerSpawnCount=0;
@@ -800,6 +815,13 @@
     ctx.font="10px 'Share Tech Mono',monospace";
     ctx.fillText("FATIGUE", panelX+barW+10, fatigueY+8);
 
+    if (world.assistTimer > 0) {
+      const assistPct = Math.round((world.assistTimer / ASSIST_WINDOW_T) * 100);
+      ctx.fillStyle="rgba(120,220,255,.9)";
+      ctx.font="10px 'Share Tech Mono',monospace";
+      ctx.fillText(`STABILIZER ${assistPct}%`, panelX+6, fatigueY+20);
+    }
+
     // HP pips
     const hpX = panelX + panelW + 14;
     const hpY = panelY + 6;
@@ -1016,6 +1038,7 @@
     if (keys.has("KeyR")) { keys.delete("KeyR"); reset(); }
 
     world.time+=dt;
+    world.assistTimer = Math.max(0, world.assistTimer - dt);
 
     // Animation state machine
     landTimer = Math.max(0, landTimer - dt);
@@ -1081,6 +1104,7 @@
               addFloater(pcx,pcy-36,"BLOCK!","rgba(100,210,255,1)");
             } else {
               p.hp--; p.hurtTimer=HURT_IFRAMES; world.camShake=6;
+              world.assistTimer = ASSIST_WINDOW_T;
               spawnHurt(pcx,pcy); playHurt();
               addFloater(pcx,pcy-36,"-1 HP","rgba(255,80,80,1)");
               if (p.hp<=0) { gameOver=true; playDead(); setAnim("death", true); }
@@ -1115,6 +1139,8 @@
     const spaceDown = keys.has("Space");
     const spaceJustPressed = spaceDown && !p.prevSpaceDown;
     p.prevSpaceDown = spaceDown;
+    if (spaceJustPressed) p.jumpBufferTimer = JUMP_BUFFER_T;
+    else p.jumpBufferTimer = Math.max(0, p.jumpBufferTimer - dt);
 
     // Stun timer (after overheat)
     if (p.stunTimer>0) {
@@ -1123,14 +1149,15 @@
     }
 
     if (p.stunTimer<=0) {
-      if (spaceJustPressed) {
+      if (p.jumpBufferTimer > 0) {
         if (p.coyoteTimer>0) {
           // РћР±С‹С‡РЅС‹Р№ РїСЂС‹Р¶РѕРє (РёР»Рё coyote)
           p.onGround=false; p.vy=-JUMP_VEL; p.vx=Math.max(p.vx,170);
-          p.coyoteTimer=0; playJump();
+          p.coyoteTimer=0; p.jumpBufferTimer = 0; playJump();
         } else if (!p.onGround && p.hasDoubleJump) {
           // Р”Р’РћР™РќРћР™ РїСЂС‹Р¶РѕРє
           p.hasDoubleJump=false;
+          p.jumpBufferTimer = 0;
           p.vy=-JUMP_VEL*0.85;  // С‡СѓС‚СЊ СЃР»Р°Р±РµРµ
           p.fatigue=clamp(p.fatigue+DOUBLE_JUMP_FATIGUE, 0, FATIGUE_MAX);
           playDoubleJump();
@@ -1258,6 +1285,7 @@
             addFloater(ex,ey-36,"+50 BLOCK!","rgba(100,210,255,1)");
           } else {
             p.hp--; p.hurtTimer=HURT_IFRAMES; world.camShake=5;
+            world.assistTimer = ASSIST_WINDOW_T;
             spawnHurt(pcx,pcy); playHurt();
             setAnim("hurt", true);
             addFloater(pcx,pcy-36,"-1 HP","rgba(255,80,80,1)");
